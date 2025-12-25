@@ -1,5 +1,12 @@
-function ely() {
-  console.log('Ely: A tool that can quickly read and execute project commands.')
-}
+import * as prompts from '@clack/prompts'
+import colors from 'picocolors'
+import { init } from './cli'
 
-ely()
+const { red } = colors
+
+const cwd = process.cwd()
+
+init(cwd).catch(error => {
+  prompts.log.error(red(`Ely cli error: ${error.message}`))
+  process.exit(1)
+})
