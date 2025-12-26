@@ -1,14 +1,12 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import {
+  ALIASES_CONFIG_FILE,
+  ALIASES_SCRIPT_FILE,
+  CONFIG_DIR_NAME,
+} from './constants'
 import type { AliasConfig, PackageJson } from './types'
-
-/**
- * Configuration file path constants
- */
-const CONFIG_DIR_NAME = '.ely'
-const ALIASES_CONFIG_FILE = 'aliases.json'
-const ALIASES_SCRIPT_FILE = 'aliases.sh'
 
 const configDir = join(homedir(), CONFIG_DIR_NAME)
 const configFile = join(configDir, ALIASES_CONFIG_FILE)

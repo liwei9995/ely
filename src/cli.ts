@@ -8,40 +8,18 @@ import {
   setAlias,
 } from './alias'
 import { interactiveSelect } from './commands'
+import { CLI_ALIASES, CLI_BOOLEAN_ARGS, ENV_VARS } from './constants'
 import { isElyInitialized } from './shell'
 import type { CliArgs } from './types'
 
 const { blue, cyan, yellow } = colors
 
 /**
- * CLI command alias mapping
- */
-const CLI_ALIASES = {
-  h: 'help',
-  st: 'alias:set',
-  ls: 'alias:list',
-  rm: 'alias:remove',
-  it: 'alias:init',
-}
-
-/**
- * CLI boolean arguments list
- */
-const CLI_BOOLEAN_ARGS = [
-  'help',
-  'alias',
-  'alias:set',
-  'alias:list',
-  'alias:remove',
-  'alias:init',
-]
-
-/**
  * Initialize CLI
  */
 export async function init(cwd: string): Promise<void> {
   const argv = mri<CliArgs>(process.argv.slice(2), {
-    boolean: CLI_BOOLEAN_ARGS,
+    boolean: [...CLI_BOOLEAN_ARGS],
     alias: CLI_ALIASES,
   })
 
@@ -85,7 +63,7 @@ ${cyan('Usage:')}
   // Check if ely is initialized on first run (only prompt if not initialized)
   // Skip prompt if user explicitly runs a command or if already initialized
   const isInitialized = isElyInitialized()
-  const hasSkipEnv = process.env.ELY_SKIP_INIT_PROMPT !== undefined
+  const hasSkipEnv = process.env[ENV_VARS.ELY_SKIP_INIT_PROMPT] !== undefined
   if (isInitialized) {
     // Already initialized, skip prompt
   } else if (hasSkipEnv) {

@@ -3,15 +3,14 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { aliasScriptFile } from './config'
-
-/**
- * Shell-related constants
- */
-const WINDOWS_SHELL_ARGS = ['/d', '/s', '/c'] as const
-const UNIX_SHELL_ARGS = ['-c'] as const
-const INTERACTIVE_SHELL_ARGS = ['-i', '-c'] as const
-const DEFAULT_WINDOWS_SHELL = 'cmd.exe'
-const DEFAULT_UNIX_SHELL = '/bin/sh'
+import {
+  ALIAS_PREFIX,
+  DEFAULT_UNIX_SHELL,
+  DEFAULT_WINDOWS_SHELL,
+  INTERACTIVE_SHELL_ARGS,
+  UNIX_SHELL_ARGS,
+  WINDOWS_SHELL_ARGS,
+} from './constants'
 
 /**
  * Check if running on Windows
@@ -212,13 +211,6 @@ export function executeSourceCommand(): boolean {
 }
 
 /**
- * Check if called via eval mode (for auto source)
- */
-export function isEvalMode(): boolean {
-  return process.env.ELY_EVAL_MODE === '1' || process.argv.includes('--eval')
-}
-
-/**
  * Get source command for shell config file
  */
 function getShellConfigSourceCommand(shellName: string): string {
@@ -275,7 +267,6 @@ function parseAliasLine(line: string): [string, string] | null {
   }
 
   // Remove 'alias' prefix if present
-  const ALIAS_PREFIX = 'alias '
   if (trimmedLine.startsWith(ALIAS_PREFIX)) {
     trimmedLine = trimmedLine.slice(ALIAS_PREFIX.length).trim()
   }

@@ -19,6 +19,10 @@ import type {
   MatchedAlias,
   OrphanedAlias,
 } from '../types'
+import {
+  detectPackageManager,
+  formatCommandWithPackageManager,
+} from '../utils/package-manager'
 import { generateAliasScriptFile } from './generator'
 import {
   showAliasList,
@@ -136,12 +140,16 @@ export async function generateShellAliases(cwd: string): Promise<boolean> {
   }
 
   const scriptName = selected as string
-  const command = pkg.scripts[scriptName] // 获取完整的命令，如 "pnpm run dev"
+  const rawCommand = pkg.scripts[scriptName]
 
-  if (!command) {
+  if (!rawCommand) {
     prompts.log.error(red('Command not found'))
     return false
   }
+
+  // Detect package manager and format command
+  const pmInfo = detectPackageManager(cwd)
+  const command = formatCommandWithPackageManager(scriptName, pmInfo.manager)
 
   let aliasName: string
 

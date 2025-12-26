@@ -4,16 +4,18 @@ import * as prompts from '@clack/prompts'
 import spawn from 'cross-spawn'
 import colors from 'picocolors'
 import { readPackageJson } from './config'
+import {
+  NODE_MODULES_BIN,
+  PATH_SEPARATOR_UNIX,
+  PATH_SEPARATOR_WINDOWS,
+} from './constants'
 import { getDefaultShell, getShellArgs, isWindows } from './shell'
+import {
+  detectPackageManager,
+  formatCommandWithPackageManager,
+} from './utils/package-manager'
 
 const { blue, cyan, green, red, yellow } = colors
-
-/**
- * PATH separator constants
- */
-const PATH_SEPARATOR_WINDOWS = ';'
-const PATH_SEPARATOR_UNIX = ':'
-const NODE_MODULES_BIN = 'node_modules/.bin'
 
 /**
  * Validate scripts configuration in package.json
@@ -109,12 +111,16 @@ export async function interactiveSelect(cwd: string): Promise<void> {
   }
 
   const scriptName = selected as string
-  const command = packageScripts[scriptName]
+  const rawCommand = packageScripts[scriptName]
 
-  if (!command) {
+  if (!rawCommand) {
     prompts.log.error(red('Command not found'))
     process.exit(1)
   }
+
+  // Detect package manager and format command
+  const pmInfo = detectPackageManager(cwd)
+  const command = formatCommandWithPackageManager(scriptName, pmInfo.manager)
 
   run(command, cwd)
 }
