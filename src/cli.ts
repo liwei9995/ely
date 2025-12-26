@@ -1,15 +1,16 @@
+import * as prompts from '@clack/prompts'
 import mri from 'mri'
 import colors from 'picocolors'
 import {
   initAliasScript,
-  listAliases,
   listShellAliases,
   removeAlias,
   setAlias,
 } from './alias'
 import { interactiveSelect } from './commands'
+import { isElyInitialized } from './shell'
 
-const { blue, cyan } = colors
+const { blue, cyan, yellow } = colors
 
 interface CliArgs {
   help?: boolean
@@ -17,9 +18,7 @@ interface CliArgs {
   'alias:set'?: boolean
   'alias:list'?: boolean
   'alias:remove'?: boolean
-  'alias:shell'?: boolean
   'alias:init'?: boolean
-  eval?: boolean
   _?: string[]
 }
 
@@ -31,18 +30,14 @@ export async function init(cwd: string): Promise<void> {
       'alias:set',
       'alias:list',
       'alias:remove',
-      'alias:shell',
       'alias:init',
-      'eval',
     ],
     alias: {
       h: 'help',
       st: 'alias:set',
       ls: 'alias:list',
       rm: 'alias:remove',
-      sh: 'alias:shell',
       it: 'alias:init',
-      e: 'eval',
     },
   })
 
@@ -55,8 +50,7 @@ ${cyan('Usage:')}
   ely alias:set         Set command alias and generate alias script file
   ely alias:list        List all aliases
   ely alias:remove      Remove alias
-  ely alias:shell       List all aliases from user's default shell
-  ely alias:init        Initialize alias script file and add to shell config
+  ely alias:init        Initialize or repair alias script file and shell config
 `)
     process.exit(0)
   }
@@ -70,7 +64,7 @@ ${cyan('Usage:')}
   }
 
   if (argv['alias:list'] || command === 'alias:list') {
-    listAliases()
+    listShellAliases()
     return
   }
 
@@ -79,14 +73,38 @@ ${cyan('Usage:')}
     return
   }
 
-  if (argv['alias:shell'] || command === 'alias:shell') {
-    listShellAliases()
-    return
-  }
-
   if (argv['alias:init'] || command === 'alias:init') {
     await initAliasScript()
     return
+  }
+
+  // Check if ely is initialized on first run (only prompt if not initialized)
+  // Skip prompt if user explicitly runs a command or if already initialized
+  const isInitialized = isElyInitialized()
+  const hasSkipEnv = process.env.ELY_SKIP_INIT_PROMPT !== undefined
+  if (isInitialized) {
+    // Already initialized, skip prompt
+  } else if (hasSkipEnv) {
+    // User explicitly skipped, don't prompt
+  } else {
+    const shouldInit = await prompts.confirm({
+      message:
+        'Ely aliases are not initialized. Would you like to initialize them now?',
+      initialValue: true,
+    })
+
+    if (prompts.isCancel(shouldInit)) {
+      prompts.cancel('Cancelled')
+      process.exit(0)
+    }
+
+    if (shouldInit) {
+      await initAliasScript()
+      // After initialization, continue with interactive selection
+      prompts.log.info(
+        yellow('\n💡 You can now use aliases in your terminal. Running ely...')
+      )
+    }
   }
 
   // Default behavior: interactive selection

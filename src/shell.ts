@@ -50,6 +50,9 @@ export function getShellConfigFile(): string | null {
 
 // Check if source line already exists in shell config
 export function hasSourceLineInConfig(configFile: string): boolean {
+  if (!configFile) {
+    return false
+  }
   if (!existsSync(configFile)) {
     return false
   }
@@ -65,6 +68,15 @@ export function hasSourceLineInConfig(configFile: string): boolean {
   } catch {
     return false
   }
+}
+
+// Check if ely aliases are initialized (shell config has source line)
+export function isElyInitialized(): boolean {
+  const shellConfigFile = getShellConfigFile()
+  if (!shellConfigFile) {
+    return false
+  }
+  return hasSourceLineInConfig(shellConfigFile)
 }
 
 // Add source line to shell config file
@@ -111,6 +123,45 @@ export function getSourceCommand(): string {
   return `[ -f "${aliasScriptFile}" ] && source "${aliasScriptFile}" 2>/dev/null || true`
 }
 
+// Execute source command to make aliases effective immediately
+export function executeSourceCommand(): boolean {
+  if (!existsSync(aliasScriptFile)) {
+    return false
+  }
+
+  if (isWindows()) {
+    // Windows not supported for now
+    return false
+  }
+
+  try {
+    const shell = getDefaultShell()
+    const shellName = shell.split('/').pop() || shell
+    const sourceCmd = getSourceCommand()
+
+    let shellArgs: string[] = []
+    if (shellName.includes('zsh') || shellName.includes('bash')) {
+      // Use -i flag for interactive shell to load .zshrc/.bashrc
+      // Use -c flag to execute the command
+      shellArgs = ['-i', '-c', sourceCmd]
+    } else {
+      // For other shells, just use -c
+      shellArgs = ['-c', sourceCmd]
+    }
+
+    const result = spawnSync(shell, shellArgs, {
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env },
+    })
+
+    // Return true if command executed successfully (even if there were warnings)
+    return result.status === 0 || result.status === null
+  } catch {
+    return false
+  }
+}
+
 // Check if we're being called via eval (for automatic sourcing)
 export function isEvalMode(): boolean {
   return process.env.ELY_EVAL_MODE === '1' || process.argv.includes('--eval')
@@ -118,13 +169,17 @@ export function isEvalMode(): boolean {
 
 // Get alias command for different shells
 function getAliasCommand(shellName: string): string {
+  // Get source command for ely alias script
+  const elySourceCmd = getSourceCommand()
+  const elySource = elySourceCmd ? `${elySourceCmd} && ` : ''
+
   if (shellName.includes('zsh')) {
-    return '(source ~/.zshrc 2>/dev/null || true) && alias'
+    return `(source ~/.zshrc 2>/dev/null || true) && ${elySource}alias`
   }
   if (shellName.includes('bash')) {
-    return '(source ~/.bashrc 2>/dev/null || source ~/.bash_profile 2>/dev/null || true) && alias'
+    return `(source ~/.bashrc 2>/dev/null || source ~/.bash_profile 2>/dev/null || true) && ${elySource}alias`
   }
-  return 'alias'
+  return `${elySource}alias`
 }
 
 // Parse a single alias line

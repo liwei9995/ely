@@ -4,4 +4,5 @@ export interface PackageJson {
 
 export interface AliasConfig {
   aliases: Record<string, string>
+  removedAliases?: string[]
 }

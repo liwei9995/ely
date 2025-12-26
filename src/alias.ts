@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import * as prompts from '@clack/prompts'
 import colors from 'picocolors'
 import {
@@ -14,36 +14,69 @@ import {
   getShellConfigFile,
   getSourceCommand,
   hasSourceLineInConfig,
-  isEvalMode,
   readShellAliases,
 } from './shell'
 
 const { blue, cyan, green, red, yellow } = colors
 
+// Extract alias names from existing script file
+function extractAliasNamesFromScript(): Set<string> {
+  const aliasNames = new Set<string>()
+  if (!existsSync(aliasScriptFile)) {
+    return aliasNames
+  }
+
+  try {
+    const content = readFileSync(aliasScriptFile, 'utf-8')
+    // Match lines like "alias name='...'" or "unalias name ..."
+    const aliasRegex = /(?:^|\n)(?:alias|unalias)\s+([a-zA-Z0-9_:-]+)/g
+    const matches = content.matchAll(aliasRegex)
+    for (const match of matches) {
+      aliasNames.add(match[1])
+    }
+  } catch {
+    // Ignore errors when reading old script file
+  }
+
+  return aliasNames
+}
+
 // Generate shell alias script from config
 function getShellAliasScript(): string {
   const config = readAliasConfig()
 
-  if (Object.keys(config.aliases).length === 0) {
-    return ''
+  // Get all aliases from old script file (including deleted ones)
+  const oldAliasNames = extractAliasNamesFromScript()
+
+  // Build script: first unalias all old aliases, then define new ones
+  const unaliasCommands: string[] = []
+  const aliasCommands: string[] = []
+
+  // Unalias all old aliases (including deleted ones)
+  for (const aliasName of oldAliasNames) {
+    unaliasCommands.push(`unalias ${aliasName} 2>/dev/null || true`)
   }
 
-  // Generate aliases
-  const aliases = Object.entries(config.aliases)
-    .map(([alias, script]) => {
-      return `alias ${alias}='${script}'`
-    })
-    .join('\n')
+  // Unalias removed aliases (default aliases that were removed)
+  const removedAliases = config.removedAliases || []
+  for (const aliasName of removedAliases) {
+    unaliasCommands.push(`unalias ${aliasName} 2>/dev/null || true`)
+  }
 
-  return aliases
+  // Define new aliases
+  for (const [alias, script] of Object.entries(config.aliases)) {
+    aliasCommands.push(`alias ${alias}='${script}'`)
+  }
+
+  // Combine unalias and alias commands
+  const allCommands = [...unaliasCommands, ...aliasCommands]
+
+  return allCommands.join('\n')
 }
 
 // Generate and save alias script file
 export function generateAliasScriptFile(): void {
   const script = getShellAliasScript()
-  if (!script) {
-    return
-  }
 
   const configDir = aliasScriptFile.split('/').slice(0, -1).join('/')
   if (!existsSync(configDir)) {
@@ -62,8 +95,12 @@ ${script}
 }
 
 // Show alias script file status and instructions
-function showAliasScriptStatus(cwd: string): void {
+function showAliasScriptStatus(_cwd: string): void {
   const shellConfigFile = getShellConfigFile()
+  let sourceLineAdded = false
+  let needsManualSetup = false
+
+  // Handle shell config file setup
   if (shellConfigFile && !hasSourceLineInConfig(shellConfigFile)) {
     // First time setting alias, initialize the shell config
     const added = addSourceLineToConfig(shellConfigFile)
@@ -74,11 +111,7 @@ function showAliasScriptStatus(cwd: string): void {
       prompts.log.success(
         `${green('✓')} Source line added to ${cyan(shellConfigFile)}`
       )
-      prompts.log.info(
-        yellow('\n💡 Run ') +
-          cyan(`source ${shellConfigFile}`) +
-          yellow(' or restart your terminal to use the aliases')
-      )
+      sourceLineAdded = true
     } else {
       prompts.log.step(
         blue('📝 Alias script file generated: ') + cyan(aliasScriptFile)
@@ -89,12 +122,14 @@ function showAliasScriptStatus(cwd: string): void {
       console.log(
         cyan(`  [ -f "${aliasScriptFile}" ] && source "${aliasScriptFile}"`)
       )
+      needsManualSetup = true
     }
   } else if (shellConfigFile && hasSourceLineInConfig(shellConfigFile)) {
     // Source line already exists, just confirm the update
     prompts.log.success(
       `${green('✓')} Alias script file updated: ${cyan(aliasScriptFile)}`
     )
+    sourceLineAdded = true
   } else {
     // Shell config file not detected
     prompts.log.step(
@@ -108,43 +143,33 @@ function showAliasScriptStatus(cwd: string): void {
     console.log(
       cyan(`  [ -f "${aliasScriptFile}" ] && source "${aliasScriptFile}"`)
     )
+    needsManualSetup = true
   }
 
-  // If in eval mode, output source command directly
-  if (existsSync(aliasScriptFile) && isEvalMode()) {
-    console.log(getSourceCommand())
-    return
-  }
-
-  // Provide ways to source the alias
+  // Provide instructions to make alias immediately effective
   if (existsSync(aliasScriptFile)) {
-    prompts.log.info(yellow('\n💡 To use the alias immediately, choose one:'))
-    console.log(cyan(`  1. source "${aliasScriptFile}"`))
-    console.log(cyan(`  2. eval "$(ely alias:set --eval)"`))
-    if (shellConfigFile && hasSourceLineInConfig(shellConfigFile)) {
+    const sourceCmd = getSourceCommand()
+
+    // Note: We cannot directly modify the parent shell environment from Node.js
+    // So we provide clear instructions for the user to execute the command
+    if (sourceCmd) {
+      prompts.log.step(blue('💡 To make alias effective immediately, run:'))
+      console.log(cyan(`  ${sourceCmd}`))
+    }
+
+    // Provide additional information based on setup status
+    if (sourceLineAdded) {
+      // Source line is already in config, just need to reload
       prompts.log.info(
-        yellow('  3. Or restart your terminal to use the alias automatically.')
+        yellow('\n💡 Or restart your terminal to use the alias automatically.')
+      )
+    } else if (needsManualSetup) {
+      // Need manual setup, suggest running init command
+      prompts.log.info(
+        yellow('\n💡 To make it permanent, run: ') + cyan('ely alias:init')
       )
     }
   }
-}
-
-// Validate alias name
-function validateAliasName(
-  value: string,
-  existingAliases: Record<string, string>,
-  currentScript?: string
-): string | undefined {
-  if (!value || value.trim().length === 0) {
-    return 'Alias cannot be empty'
-  }
-  if (!/^[a-zA-Z0-9_:-]+$/.test(value)) {
-    return 'Alias can only contain letters, numbers, underscores, hyphens and colons'
-  }
-  if (existingAliases[value] && existingAliases[value] !== currentScript) {
-    return `Alias "${value}" is already in use`
-  }
-  return undefined
 }
 
 // Generate shell aliases: read package.json, let user select command and input alias
@@ -174,19 +199,104 @@ export async function generateShellAliases(cwd: string): Promise<boolean> {
     return false
   }
 
-  const alias = await prompts.text({
-    message: 'Enter alias:',
-    placeholder: 'e.g.: dev, build, ely:check',
-    validate: value =>
-      validateAliasName(value, config.aliases, selected as string),
-  })
-
-  if (prompts.isCancel(alias)) {
-    return false
-  }
-
-  const aliasName = alias as string
   const scriptName = selected as string
+  let aliasName: string
+
+  // Loop until user provides a valid alias or cancels
+  while (true) {
+    const alias = await prompts.text({
+      message: 'Enter alias:',
+      placeholder: 'e.g.: dev, build, ely:check',
+      validate: value => {
+        if (!value || value.trim().length === 0) {
+          return 'Alias cannot be empty'
+        }
+        if (!/^[a-zA-Z0-9_:-]+$/.test(value)) {
+          return 'Alias can only contain letters, numbers, underscores, hyphens and colons'
+        }
+        return undefined
+      },
+    })
+
+    if (prompts.isCancel(alias)) {
+      return false
+    }
+
+    aliasName = alias as string
+
+    // Check if alias already exists in all shell aliases (includes system defaults and loaded custom aliases)
+    const shellAliases = readShellAliases()
+    const existingShellAlias = shellAliases[aliasName]
+
+    // Check if alias already exists in config (custom aliases, may not be loaded yet)
+    const existingConfigAlias = config.aliases[aliasName]
+
+    // If exists in shell aliases (could be system default or already loaded custom alias)
+    if (existingShellAlias) {
+      // Check if it's the same as what we're trying to set
+      const shellScriptName = extractScriptFromElyAlias(existingShellAlias)
+      if (shellScriptName === scriptName) {
+        prompts.log.info(
+          yellow(
+            `Alias "${cyan(aliasName)}" already points to "${cyan(scriptName)}". No change needed.`
+          )
+        )
+        return true
+      }
+
+      // Ask user if they want to overwrite
+      const shouldOverwrite = await prompts.confirm({
+        message: `Alias "${cyan(aliasName)}" already exists in shell and points to "${cyan(existingShellAlias)}". Do you want to overwrite it with "${cyan(scriptName)}"?`,
+        initialValue: false,
+      })
+
+      if (prompts.isCancel(shouldOverwrite)) {
+        return false
+      }
+
+      if (!shouldOverwrite) {
+        // User chose not to overwrite, continue loop to ask for another alias
+        continue
+      }
+
+      // User chose to overwrite, break out of loop
+      break
+    }
+
+    // If exists in config but not in shell (not loaded yet)
+    if (existingConfigAlias) {
+      // If it's the same script, no need to overwrite
+      if (existingConfigAlias === scriptName) {
+        prompts.log.info(
+          yellow(
+            `Alias "${cyan(aliasName)}" already points to "${cyan(scriptName)}". No change needed.`
+          )
+        )
+        return true
+      }
+
+      // Ask user if they want to overwrite
+      const shouldOverwrite = await prompts.confirm({
+        message: `Alias "${cyan(aliasName)}" already exists in config and points to "${cyan(existingConfigAlias)}". Do you want to overwrite it with "${cyan(scriptName)}"?`,
+        initialValue: false,
+      })
+
+      if (prompts.isCancel(shouldOverwrite)) {
+        return false
+      }
+
+      if (!shouldOverwrite) {
+        // User chose not to overwrite, continue loop to ask for another alias
+        continue
+      }
+
+      // User chose to overwrite, break out of loop
+      break
+    }
+
+    // Alias doesn't exist, break out of loop
+    break
+  }
 
   config.aliases[aliasName] = scriptName
   saveAliasConfig(config)
@@ -210,15 +320,84 @@ export async function generateCustomAlias(cwd: string): Promise<void> {
 
   prompts.intro(blue('🔖 Set custom alias'))
 
-  const aliasName = await prompts.text({
-    message: 'Enter alias name:',
-    placeholder: 'e.g.: dev, build, mycmd',
-    validate: value => validateAliasName(value, config.aliases),
-  })
+  let aliasName: string
 
-  if (prompts.isCancel(aliasName)) {
-    prompts.cancel('Cancelled')
-    process.exit(0)
+  // Loop until user provides a valid alias or cancels
+  while (true) {
+    const nameInput = await prompts.text({
+      message: 'Enter alias name:',
+      placeholder: 'e.g.: dev, build, mycmd',
+      validate: value => {
+        if (!value || value.trim().length === 0) {
+          return 'Alias cannot be empty'
+        }
+        if (!/^[a-zA-Z0-9_:-]+$/.test(value)) {
+          return 'Alias can only contain letters, numbers, underscores, hyphens and colons'
+        }
+        return undefined
+      },
+    })
+
+    if (prompts.isCancel(nameInput)) {
+      prompts.cancel('Cancelled')
+      process.exit(0)
+    }
+
+    aliasName = nameInput as string
+
+    // Check if alias already exists in all shell aliases (includes system defaults and loaded custom aliases)
+    const shellAliases = readShellAliases()
+    const existingShellAlias = shellAliases[aliasName]
+
+    // Check if alias already exists in config (custom aliases, may not be loaded yet)
+    const existingConfigAlias = config.aliases[aliasName]
+
+    // If exists in shell aliases (could be system default or already loaded custom alias)
+    if (existingShellAlias) {
+      // Ask user if they want to overwrite
+      const shouldOverwrite = await prompts.confirm({
+        message: `Alias "${cyan(aliasName)}" already exists in shell and points to "${cyan(existingShellAlias)}". Do you want to overwrite it?`,
+        initialValue: false,
+      })
+
+      if (prompts.isCancel(shouldOverwrite)) {
+        prompts.cancel('Cancelled')
+        process.exit(0)
+      }
+
+      if (!shouldOverwrite) {
+        // User chose not to overwrite, continue loop to ask for another alias
+        continue
+      }
+
+      // User chose to overwrite, break out of loop
+      break
+    }
+
+    // If exists in config but not in shell (not loaded yet)
+    if (existingConfigAlias) {
+      // Ask user if they want to overwrite
+      const shouldOverwrite = await prompts.confirm({
+        message: `Alias "${cyan(aliasName)}" already exists in config and points to "${cyan(existingConfigAlias)}". Do you want to overwrite it?`,
+        initialValue: false,
+      })
+
+      if (prompts.isCancel(shouldOverwrite)) {
+        prompts.cancel('Cancelled')
+        process.exit(0)
+      }
+
+      if (!shouldOverwrite) {
+        // User chose not to overwrite, continue loop to ask for another alias
+        continue
+      }
+
+      // User chose to overwrite, break out of loop
+      break
+    }
+
+    // Alias doesn't exist, break out of loop
+    break
   }
 
   const aliasValue = await prompts.text({
@@ -241,14 +420,13 @@ export async function generateCustomAlias(cwd: string): Promise<void> {
     process.exit(0)
   }
 
-  const name = aliasName as string
   const value = aliasValue as string
 
-  config.aliases[name] = value
+  config.aliases[aliasName] = value
   saveAliasConfig(config)
 
   prompts.log.success(
-    `${green('Alias set successfully:')} ${cyan(name)} ${yellow('→')} ${cyan(value)}`
+    `${green('Alias set successfully:')} ${cyan(aliasName)} ${yellow('→')} ${cyan(value)}`
   )
 
   // Generate alias script file
@@ -284,55 +462,171 @@ export async function setAlias(cwd: string): Promise<void> {
   }
 }
 
-// List all aliases
-export function listAliases(): void {
-  const config = readAliasConfig()
-  const aliases = Object.entries(config.aliases)
-
-  if (aliases.length === 0) {
-    prompts.log.info(yellow('No alias configuration'))
-    return
+// Fuzzy match function for alias names
+function fuzzyMatch(pattern: string, text: string): boolean {
+  if (!pattern || pattern.trim().length === 0) {
+    return true // Empty pattern matches everything
   }
 
-  prompts.intro(blue('📋 Current alias list'))
-  for (const [alias, script] of aliases) {
-    console.log(`  ${cyan(alias)} ${yellow('→')} ${green(script)}`)
+  const patternLower = pattern.toLowerCase().trim()
+  const textLower = text.toLowerCase()
+
+  // Exact match (case-insensitive)
+  if (textLower === patternLower) {
+    return true
   }
+
+  // Starts with match
+  if (textLower.startsWith(patternLower)) {
+    return true
+  }
+
+  // Contains match (substring)
+  if (textLower.includes(patternLower)) {
+    return true
+  }
+
+  // Fuzzy match: check if all pattern characters appear in order (not necessarily consecutive)
+  let patternIndex = 0
+  for (
+    let i = 0;
+    i < textLower.length && patternIndex < patternLower.length;
+    i++
+  ) {
+    if (textLower[i] === patternLower[patternIndex]) {
+      patternIndex++
+    }
+  }
+
+  return patternIndex === patternLower.length
 }
 
 // Remove alias
 export async function removeAlias(): Promise<void> {
   const config = readAliasConfig()
-  const aliases = Object.entries(config.aliases)
+  const shellAliases = readShellAliases()
 
-  if (aliases.length === 0) {
-    prompts.log.info(yellow('No alias configuration'))
+  // Merge all aliases: config aliases (custom) + shell aliases (default + custom)
+  const allAliases = new Map<string, { value: string; isCustom: boolean }>()
+
+  // Add shell aliases (includes both default and custom ones)
+  for (const [name, value] of Object.entries(shellAliases)) {
+    allAliases.set(name, { value, isCustom: false })
+  }
+
+  // Mark config aliases as custom
+  for (const [name, script] of Object.entries(config.aliases)) {
+    allAliases.set(name, { value: script, isCustom: true })
+  }
+
+  if (allAliases.size === 0) {
+    prompts.log.info(yellow('No aliases found'))
     return
   }
 
   prompts.intro(blue('🗑️  Remove alias'))
 
-  const alias = await prompts.select({
-    message: 'Select alias to remove:',
-    options: aliases.map(([name, script]) => ({
-      value: name,
-      label: `${cyan(name)} ${yellow('→')} ${green(script)}`,
-    })),
+  // Get user input for fuzzy matching (allow empty to show all)
+  const searchInput = await prompts.text({
+    message:
+      'Enter alias name to search (supports fuzzy matching, empty to show all):',
+    placeholder: 'e.g.: dev, build, or partial match',
+    initialValue: '',
   })
 
-  if (prompts.isCancel(alias)) {
+  if (prompts.isCancel(searchInput)) {
     prompts.cancel('Cancelled')
     process.exit(0)
   }
 
-  const aliasName = alias as string
-  delete config.aliases[aliasName]
+  const searchPattern = (searchInput as string).trim()
+
+  // Filter aliases based on fuzzy match (empty pattern matches all)
+  const matchedAliases = Array.from(allAliases.entries())
+    .filter(([name]) => fuzzyMatch(searchPattern, name))
+    .map(([name, info]) => ({
+      name,
+      value: info.value,
+      isCustom: info.isCustom,
+    }))
+
+  if (matchedAliases.length === 0) {
+    prompts.log.info(yellow(`No aliases found matching "${searchPattern}"`))
+    return
+  }
+
+  // Always show selection for user confirmation (multi-select)
+  const selected = await prompts.multiselect({
+    message: searchPattern
+      ? `Found ${matchedAliases.length} matching alias(es). Select one or more to remove:`
+      : `Select alias(es) to remove (${matchedAliases.length} total, use Space to select):`,
+    options: matchedAliases.map(({ name, value, isCustom }) => ({
+      value: name,
+      label: `${cyan(name)} ${yellow('→')} ${green(value)} ${isCustom ? yellow('(custom)') : ''}`,
+    })),
+  })
+
+  if (prompts.isCancel(selected)) {
+    prompts.cancel('Cancelled')
+    process.exit(0)
+  }
+
+  const selectedNames = selected as string[]
+  if (selectedNames.length === 0) {
+    prompts.log.info(yellow('No aliases selected'))
+    return
+  }
+
+  // Remove all selected aliases
+  const removedAliasNames: string[] = []
+  for (const selectedName of selectedNames) {
+    const aliasToRemove = matchedAliases.find(a => a.name === selectedName)
+    if (!aliasToRemove) {
+      prompts.log.warn(yellow(`Alias "${selectedName}" not found, skipping`))
+      continue
+    }
+
+    const aliasName = aliasToRemove.name
+
+    // Remove from config if it's a custom alias
+    if (aliasToRemove.isCustom && config.aliases[aliasName]) {
+      delete config.aliases[aliasName]
+    }
+
+    // If it's a default alias (not in config), add it to removedAliases
+    if (!aliasToRemove.isCustom) {
+      if (!config.removedAliases) {
+        config.removedAliases = []
+      }
+      // Only add if not already in the list
+      if (!config.removedAliases.includes(aliasName)) {
+        config.removedAliases.push(aliasName)
+      }
+    }
+
+    removedAliasNames.push(aliasName)
+  }
+
+  if (removedAliasNames.length === 0) {
+    prompts.log.info(yellow('No aliases were removed'))
+    return
+  }
+
+  // Save config changes
   saveAliasConfig(config)
 
-  // Regenerate alias script file
+  // Regenerate alias script file (this will unalias all old aliases including the ones we want to remove)
   generateAliasScriptFile()
 
-  prompts.log.success(`${green('Alias removed:')} ${cyan(aliasName)}`)
+  if (removedAliasNames.length === 1) {
+    prompts.log.success(
+      `${green('Alias removed:')} ${cyan(removedAliasNames[0])}`
+    )
+  } else {
+    prompts.log.success(
+      `${green('Removed')} ${cyan(removedAliasNames.length.toString())} ${green('aliases:')} ${cyan(removedAliasNames.join(', '))}`
+    )
+  }
 
   // Prompt user to source the updated alias script
   const shellConfigFile = getShellConfigFile()

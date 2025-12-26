@@ -36,7 +36,15 @@ export function readPackageJson(cwd: string): PackageJson | null {
 
 // Read alias configuration
 export function readAliasConfig(): AliasConfig {
-  return readJsonFile<AliasConfig>(configFile, { aliases: {} })
+  const config = readJsonFile<AliasConfig>(configFile, {
+    aliases: {},
+    removedAliases: [],
+  })
+  // Ensure removedAliases exists for backward compatibility
+  if (!config.removedAliases) {
+    config.removedAliases = []
+  }
+  return config
 }
 
 // Save alias configuration
