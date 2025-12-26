@@ -9,36 +9,40 @@ import {
 } from './alias'
 import { interactiveSelect } from './commands'
 import { isElyInitialized } from './shell'
+import type { CliArgs } from './types'
 
 const { blue, cyan, yellow } = colors
 
-interface CliArgs {
-  help?: boolean
-  alias?: boolean
-  'alias:set'?: boolean
-  'alias:list'?: boolean
-  'alias:remove'?: boolean
-  'alias:init'?: boolean
-  _?: string[]
+/**
+ * CLI command alias mapping
+ */
+const CLI_ALIASES = {
+  h: 'help',
+  st: 'alias:set',
+  ls: 'alias:list',
+  rm: 'alias:remove',
+  it: 'alias:init',
 }
 
+/**
+ * CLI boolean arguments list
+ */
+const CLI_BOOLEAN_ARGS = [
+  'help',
+  'alias',
+  'alias:set',
+  'alias:list',
+  'alias:remove',
+  'alias:init',
+]
+
+/**
+ * Initialize CLI
+ */
 export async function init(cwd: string): Promise<void> {
   const argv = mri<CliArgs>(process.argv.slice(2), {
-    boolean: [
-      'help',
-      'alias',
-      'alias:set',
-      'alias:list',
-      'alias:remove',
-      'alias:init',
-    ],
-    alias: {
-      h: 'help',
-      st: 'alias:set',
-      ls: 'alias:list',
-      rm: 'alias:remove',
-      it: 'alias:init',
-    },
+    boolean: CLI_BOOLEAN_ARGS,
+    alias: CLI_ALIASES,
   })
 
   if (argv.help) {

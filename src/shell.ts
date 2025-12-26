@@ -4,64 +4,104 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { aliasScriptFile } from './config'
 
-// Check if running on Windows
+/**
+ * Shell-related constants
+ */
+const WINDOWS_SHELL_ARGS = ['/d', '/s', '/c'] as const
+const UNIX_SHELL_ARGS = ['-c'] as const
+const INTERACTIVE_SHELL_ARGS = ['-i', '-c'] as const
+const DEFAULT_WINDOWS_SHELL = 'cmd.exe'
+const DEFAULT_UNIX_SHELL = '/bin/sh'
+
+/**
+ * Check if running on Windows
+ */
 export function isWindows(): boolean {
   return process.platform === 'win32'
 }
 
-// Get user default shell
+/**
+ * Get user default shell
+ */
 export function getDefaultShell(): string {
   if (isWindows()) {
-    return process.env.COMSPEC || 'cmd.exe'
+    return process.env.COMSPEC || DEFAULT_WINDOWS_SHELL
   }
-  return process.env.SHELL || '/bin/sh'
+  return process.env.SHELL || DEFAULT_UNIX_SHELL
 }
 
-// Get shell arguments for executing commands
+/**
+ * Get shell command execution arguments
+ */
 export function getShellArgs(): string[] {
-  return isWindows() ? ['/d', '/s', '/c'] : ['-c']
+  return isWindows() ? [...WINDOWS_SHELL_ARGS] : [...UNIX_SHELL_ARGS]
 }
 
-// Get shell config file path based on shell type
-export function getShellConfigFile(): string | null {
-  const shell = getDefaultShell()
-  const shellName = shell.split('/').pop() || shell
+/**
+ * Get interactive shell arguments (for loading config files)
+ */
+function getInteractiveShellArgs(): string[] {
+  return [...INTERACTIVE_SHELL_ARGS]
+}
 
+/**
+ * Get shell config file name
+ */
+function getShellConfigFileName(shellName: string): string | null {
+  if (shellName.includes('zsh')) {
+    return '.zshrc'
+  }
+  if (shellName.includes('bash')) {
+    // Try .bashrc first, fallback to .bash_profile
+    const bashrc = join(homedir(), '.bashrc')
+    if (existsSync(bashrc)) {
+      return '.bashrc'
+    }
+    return '.bash_profile'
+  }
+  return null
+}
+
+/**
+ * Get shell config file path based on shell type
+ */
+export function getShellConfigFile(): string | null {
   if (isWindows()) {
     return null // Windows not supported for now
   }
 
-  if (shellName.includes('zsh')) {
-    return join(homedir(), '.zshrc')
+  const shell = getDefaultShell()
+  const shellName = shell.split('/').pop() || shell
+  const configFileName = getShellConfigFileName(shellName)
+
+  if (!configFileName) {
+    return null
   }
 
-  if (shellName.includes('bash')) {
-    // Try .bashrc first, fallback to .bash_profile
-    const bashrc = join(homedir(), '.bashrc')
-    const bashProfile = join(homedir(), '.bash_profile')
-    if (existsSync(bashrc)) {
-      return bashrc
-    }
-    return bashProfile
-  }
-
-  return null
+  return join(homedir(), configFileName)
 }
 
-// Check if source line already exists in shell config
+/**
+ * Escape regex special characters
+ */
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/**
+ * Check if source line already exists in shell config file
+ */
 export function hasSourceLineInConfig(configFile: string): boolean {
-  if (!configFile) {
-    return false
-  }
-  if (!existsSync(configFile)) {
+  if (!(configFile && existsSync(configFile))) {
     return false
   }
 
   try {
     const content = readFileSync(configFile, 'utf-8')
     // Check for source or . command with aliasScriptFile
+    const escapedPath = escapeRegex(aliasScriptFile)
     const sourcePattern = new RegExp(
-      `(source|\\.)\\s+["']?${aliasScriptFile.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']?`,
+      `(source|\\.)\\s+["']?${escapedPath}["']?`,
       'i'
     )
     return sourcePattern.test(content)
@@ -79,7 +119,16 @@ export function isElyInitialized(): boolean {
   return hasSourceLineInConfig(shellConfigFile)
 }
 
-// Add source line to shell config file
+/**
+ * Generate source line content
+ */
+function generateSourceLine(): string {
+  return `\n# ely aliases\n[ -f "${aliasScriptFile}" ] && source "${aliasScriptFile}"\n`
+}
+
+/**
+ * Add source line to shell config file
+ */
 export function addSourceLineToConfig(configFile: string): boolean {
   if (!configFile) {
     return false
@@ -91,7 +140,7 @@ export function addSourceLineToConfig(configFile: string): boolean {
   }
 
   try {
-    const sourceLine = `\n# ely aliases\n[ -f "${aliasScriptFile}" ] && source "${aliasScriptFile}"\n`
+    const sourceLine = generateSourceLine()
 
     // Read existing content
     let content = ''
@@ -114,7 +163,9 @@ export function addSourceLineToConfig(configFile: string): boolean {
   }
 }
 
-// Get source command for eval mode
+/**
+ * Get source command (for immediate effect)
+ */
 export function getSourceCommand(): string {
   if (!existsSync(aliasScriptFile)) {
     return ''
@@ -123,14 +174,18 @@ export function getSourceCommand(): string {
   return `[ -f "${aliasScriptFile}" ] && source "${aliasScriptFile}" 2>/dev/null || true`
 }
 
-// Execute source command to make aliases effective immediately
-export function executeSourceCommand(): boolean {
-  if (!existsSync(aliasScriptFile)) {
-    return false
-  }
+/**
+ * Check if shell is interactive shell (zsh or bash)
+ */
+function isInteractiveShell(shellName: string): boolean {
+  return shellName.includes('zsh') || shellName.includes('bash')
+}
 
-  if (isWindows()) {
-    // Windows not supported for now
+/**
+ * Execute source command to make aliases effective immediately
+ */
+export function executeSourceCommand(): boolean {
+  if (!existsSync(aliasScriptFile) || isWindows()) {
     return false
   }
 
@@ -139,15 +194,9 @@ export function executeSourceCommand(): boolean {
     const shellName = shell.split('/').pop() || shell
     const sourceCmd = getSourceCommand()
 
-    let shellArgs: string[] = []
-    if (shellName.includes('zsh') || shellName.includes('bash')) {
-      // Use -i flag for interactive shell to load .zshrc/.bashrc
-      // Use -c flag to execute the command
-      shellArgs = ['-i', '-c', sourceCmd]
-    } else {
-      // For other shells, just use -c
-      shellArgs = ['-c', sourceCmd]
-    }
+    const shellArgs = isInteractiveShell(shellName)
+      ? [...getInteractiveShellArgs(), sourceCmd]
+      : [...UNIX_SHELL_ARGS, sourceCmd]
 
     const result = spawnSync(shell, shellArgs, {
       encoding: 'utf-8',
@@ -162,27 +211,62 @@ export function executeSourceCommand(): boolean {
   }
 }
 
-// Check if we're being called via eval (for automatic sourcing)
+/**
+ * Check if called via eval mode (for auto source)
+ */
 export function isEvalMode(): boolean {
   return process.env.ELY_EVAL_MODE === '1' || process.argv.includes('--eval')
 }
 
-// Get alias command for different shells
+/**
+ * Get source command for shell config file
+ */
+function getShellConfigSourceCommand(shellName: string): string {
+  if (shellName.includes('zsh')) {
+    return '(source ~/.zshrc 2>/dev/null || true)'
+  }
+  if (shellName.includes('bash')) {
+    return '(source ~/.bashrc 2>/dev/null || source ~/.bash_profile 2>/dev/null || true)'
+  }
+  return ''
+}
+
+/**
+ * Get alias command for different shells
+ */
 function getAliasCommand(shellName: string): string {
   // Get source command for ely alias script
   const elySourceCmd = getSourceCommand()
   const elySource = elySourceCmd ? `${elySourceCmd} && ` : ''
+  const shellConfigSource = getShellConfigSourceCommand(shellName)
 
-  if (shellName.includes('zsh')) {
-    return `(source ~/.zshrc 2>/dev/null || true) && ${elySource}alias`
-  }
-  if (shellName.includes('bash')) {
-    return `(source ~/.bashrc 2>/dev/null || source ~/.bash_profile 2>/dev/null || true) && ${elySource}alias`
+  if (shellConfigSource) {
+    return `${shellConfigSource} && ${elySource}alias`
   }
   return `${elySource}alias`
 }
 
-// Parse a single alias line
+/**
+ * Remove quotes from both ends of string
+ */
+function removeQuotes(str: string): string {
+  if (str.length < 2) {
+    return str
+  }
+  const firstChar = str[0]
+  const lastChar = str.at(-1)
+  if (
+    (firstChar === "'" && lastChar === "'") ||
+    (firstChar === '"' && lastChar === '"')
+  ) {
+    return str.slice(1, -1)
+  }
+  return str
+}
+
+/**
+ * Parse single alias line
+ */
 function parseAliasLine(line: string): [string, string] | null {
   let trimmedLine = line.trim()
 
@@ -191,8 +275,9 @@ function parseAliasLine(line: string): [string, string] | null {
   }
 
   // Remove 'alias' prefix if present
-  if (trimmedLine.startsWith('alias ')) {
-    trimmedLine = trimmedLine.slice(6).trim()
+  const ALIAS_PREFIX = 'alias '
+  if (trimmedLine.startsWith(ALIAS_PREFIX)) {
+    trimmedLine = trimmedLine.slice(ALIAS_PREFIX.length).trim()
   }
 
   // Find the first = sign to split name and value
@@ -209,50 +294,38 @@ function parseAliasLine(line: string): [string, string] | null {
   }
 
   // Remove quotes from alias name if present
-  if (name.length >= 2) {
-    const nameFirstChar = name[0]
-    const nameLastChar = name.at(-1)
-    if (
-      (nameFirstChar === "'" && nameLastChar === "'") ||
-      (nameFirstChar === '"' && nameLastChar === '"')
-    ) {
-      name = name.slice(1, -1).trim()
-    }
-  }
-
+  name = removeQuotes(name).trim()
   if (!name) {
     return null
   }
 
   // Remove quotes from value if present
-  if (value.length > 0) {
-    // Handle $'...' format (ANSI-C quoting) - keep as-is
-    if (value.startsWith("$'") && value.endsWith("'")) {
-      // Keep the $'...' format
-    } else if (value.length >= 2) {
-      const valueFirstChar = value[0]
-      const valueLastChar = value.at(-1)
-      if (
-        (valueFirstChar === "'" && valueLastChar === "'") ||
-        (valueFirstChar === '"' && valueLastChar === '"')
-      ) {
-        value = value.slice(1, -1)
-      }
-    }
+  // Handle $'...' format (ANSI-C quoting) - keep as-is
+  if (value.startsWith("$'") && value.endsWith("'")) {
+    // Keep the $'...' format
+  } else if (value.length > 0) {
+    value = removeQuotes(value)
   }
 
   return [name, value]
 }
 
-// Extract script name from ely alias value
+/**
+ * Extract script name from ely alias value
+ */
 export function extractScriptFromElyAlias(aliasValue: string): string | null {
   const trimmed = aliasValue.trim()
+  if (!trimmed) {
+    return null
+  }
   // Remove quotes if present
-  const withoutQuotes = trimmed.replace(/^['"]|['"]$/g, '')
+  const withoutQuotes = removeQuotes(trimmed)
   return withoutQuotes || null
 }
 
-// Read shell aliases from user's default shell
+/**
+ * Read aliases from user's default shell
+ */
 export function readShellAliases(): Record<string, string> {
   const shell = getDefaultShell()
   const shellName = shell.split('/').pop() || shell
@@ -260,24 +333,20 @@ export function readShellAliases(): Record<string, string> {
 
   try {
     const command = getAliasCommand(shellName)
-
-    // Execute the command using the default shell
-    const shellCommand = shell
     let shellArgs: string[] = []
 
     if (isWindows()) {
       // Windows: use /d /s /c for cmd.exe
       shellArgs = [...getShellArgs(), command]
-    } else if (shellName.includes('zsh') || shellName.includes('bash')) {
+    } else if (isInteractiveShell(shellName)) {
       // Use -i flag for interactive shell to load .zshrc/.bashrc
-      // Use -c flag to execute the command
-      shellArgs = ['-i', '-c', command]
+      shellArgs = [...getInteractiveShellArgs(), command]
     } else {
       // For other shells, just use -c
-      shellArgs = ['-c', command]
+      shellArgs = [...UNIX_SHELL_ARGS, command]
     }
 
-    const result = spawnSync(shellCommand, shellArgs, {
+    const result = spawnSync(shell, shellArgs, {
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'ignore'],
       env: { ...process.env },

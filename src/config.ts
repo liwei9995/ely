@@ -3,11 +3,20 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { AliasConfig, PackageJson } from './types'
 
-const configDir = join(homedir(), '.ely')
-const configFile = join(configDir, 'aliases.json')
-export const aliasScriptFile = join(configDir, 'aliases.sh')
+/**
+ * Configuration file path constants
+ */
+const CONFIG_DIR_NAME = '.ely'
+const ALIASES_CONFIG_FILE = 'aliases.json'
+const ALIASES_SCRIPT_FILE = 'aliases.sh'
 
-// Helper function to safely read and parse JSON files
+const configDir = join(homedir(), CONFIG_DIR_NAME)
+const configFile = join(configDir, ALIASES_CONFIG_FILE)
+export const aliasScriptFile = join(configDir, ALIASES_SCRIPT_FILE)
+
+/**
+ * Safely read and parse JSON file
+ */
 function readJsonFile<T>(filePath: string, defaultValue: T): T {
   if (!existsSync(filePath)) {
     return defaultValue
@@ -20,7 +29,17 @@ function readJsonFile<T>(filePath: string, defaultValue: T): T {
   }
 }
 
-// Read package.json
+/**
+ * Default alias configuration
+ */
+const DEFAULT_ALIAS_CONFIG: AliasConfig = {
+  aliases: {},
+  removedAliases: [],
+}
+
+/**
+ * Read package.json
+ */
 export function readPackageJson(cwd: string): PackageJson | null {
   const packageJsonPath = join(cwd, 'package.json')
   if (!existsSync(packageJsonPath)) {
@@ -34,12 +53,11 @@ export function readPackageJson(cwd: string): PackageJson | null {
   }
 }
 
-// Read alias configuration
+/**
+ * Read alias configuration
+ */
 export function readAliasConfig(): AliasConfig {
-  const config = readJsonFile<AliasConfig>(configFile, {
-    aliases: {},
-    removedAliases: [],
-  })
+  const config = readJsonFile<AliasConfig>(configFile, DEFAULT_ALIAS_CONFIG)
   // Ensure removedAliases exists for backward compatibility
   if (!config.removedAliases) {
     config.removedAliases = []
@@ -47,7 +65,9 @@ export function readAliasConfig(): AliasConfig {
   return config
 }
 
-// Save alias configuration
+/**
+ * Save alias configuration
+ */
 export function saveAliasConfig(config: AliasConfig): void {
   if (!existsSync(configDir)) {
     mkdirSync(configDir, { recursive: true })
