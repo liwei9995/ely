@@ -1,7 +1,7 @@
 {
   "name": "@yiyi/ely",
   "type": "module",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "license": "MIT",
   "author": "Alex Li",
   "description": "A tool that can quickly read and execute project commands.",
@@ -16,6 +16,7 @@
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.mts",
   "files": [
+    "index.js",
     "dist"
   ],
   "scripts": {
