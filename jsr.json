@@ -5,10 +5,9 @@
   "author": "Alex Li",
   "exports": {
     ".": "./src/index.ts",
-    "./index": {
-      "kind": "bin",
-      "name": "ely",
-      "path": "./src/index.ts"
+    "./ely": {
+      "path": "./src/index.ts",
+      "kind": "bin"
     }
   }
 }
