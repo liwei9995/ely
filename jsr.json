@@ -3,5 +3,8 @@
   "version": "0.0.2",
   "license": "MIT",
   "author": "Alex Li",
-  "exports": "./src/index.ts"
+  "exports": "./src/index.ts",
+  "bin": {
+    "ely": "./src/index.ts"
+  }
 }
