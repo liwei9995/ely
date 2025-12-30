@@ -1,7 +1,7 @@
 {
   "name": "@yiyi/ely",
   "type": "module",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "license": "MIT",
   "author": "Alex Li",
   "description": "A tool that can quickly read and execute project commands.",
