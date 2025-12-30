@@ -3,7 +3,8 @@
 一个可以快速读取和执行项目命令的 CLI 工具。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Node Version](https://img.shields.io/badge/node-%3E%3D22.21.1-brightgreen.svg)](https://nodejs.org/)
+[![Node Version](https://img.shields.io/badge/node-%3E%3D24.12.0-brightgreen.svg)](https://nodejs.org/)
+[![JSR](https://jsr.io/badges/@yiyi/ely)](https://jsr.io/@yiyi/ely)
 
 ## ✨ 功能特性
 
@@ -18,9 +19,11 @@
 
 ## 📦 安装
 
+项目通过 [JSR](https://jsr.io) (JavaScript Registry) 发布，支持通过 npm/pnpm 全局安装。
+
 ```bash
-# 使用 pnpm
-pnpm add -g @yiyi/ely
+# 使用 pnpm（推荐）
+pnpm global add @yiyi/ely
 
 # 使用 npm
 npm install -g @yiyi/ely
@@ -30,6 +33,9 @@ yarn global add @yiyi/ely
 
 # 使用 bun
 bun add -g @yiyi/ely
+
+# 使用 Deno
+deno install -A -n ely jsr:@yiyi/ely/ely
 ```
 
 ## 🚀 快速开始

@@ -4,7 +4,7 @@
 
 ### 环境要求
 
-- Node.js >= 22.21.1 或 >= 24.0.1
+- Node.js >= 24.12.0
 - pnpm (推荐) 或 npm/yarn
 
 ### 安装依赖
@@ -174,11 +174,80 @@ prompts.log.error('Error message')
 
 ## 发布流程
 
+### JSR 发布
+
+项目通过 JSR (JavaScript Registry) 发布，支持通过 npm/pnpm 全局安装。
+
+#### 发布步骤
+
 1. 更新版本号（遵循语义化版本）
-2. 更新 CHANGELOG.md
-3. 提交更改
-4. 创建 git tag
-5. 运行 `pnpm publish`（会自动构建）
+   - 更新 `package.json` 中的 `version`
+   - 更新 `jsr.json` 中的 `version`
+   - 更新 `README.md` 中的更新日志
+
+2. 提交更改并推送到 main 分支
+   ```bash
+   git add .
+   git commit -m "chore: bump version to x.x.x"
+   git push origin main
+   ```
+
+3. GitHub Actions 会自动发布到 JSR
+   - 工作流文件：`.github/workflows/publish.yml`
+   - 当代码推送到 main 分支时自动触发
+   - 使用 OIDC 身份验证，无需存储凭据
+
+#### 手动发布（可选）
+
+如果需要手动发布：
+
+```bash
+# 确保依赖已安装
+pnpm install
+
+# 发布到 JSR
+npx jsr publish
+```
+
+#### jsr.json 配置说明
+
+`jsr.json` 文件配置了包的元数据和导出：
+
+```json
+{
+  "name": "@yiyi/ely",
+  "version": "0.0.5",
+  "license": "MIT",
+  "author": "Alex Li",
+  "exports": "./src/index.ts",  // 库的默认导出
+  "bin": {                       // CLI 可执行文件配置
+    "ely": "./src/index.ts"      // 命令名: 入口文件路径
+  }
+}
+```
+
+**重要说明：**
+- `exports` 字段必须是字符串，指向库的默认导出
+- `bin` 字段是独立的对象，定义 CLI 可执行文件
+- JSR 不支持在 `exports` 中使用对象格式定义 bin
+- 入口文件路径指向 TypeScript 源文件，JSR 会自动编译
+
+#### 安装和使用
+
+用户可以通过以下方式安装：
+
+```bash
+# 使用 pnpm
+pnpm global add @yiyi/ely
+
+# 使用 npm
+npm install -g @yiyi/ely
+
+# 使用 Deno
+deno install -A -n ely jsr:@yiyi/ely/ely
+```
+
+安装后，`ely` 命令即可在全局使用。
 
 ## 常见问题
 
