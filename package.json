@@ -60,6 +60,17 @@
       "simple-git-hooks"
     ]
   },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/liwei9995/ely.git"
+  },
+  "keywords": [
+    "ely",
+    "ely cli",
+    "aily",
+    "aily cli",
+    "cli"
+  ],
   "bugs": {
     "url": "https://github.com/liwei9995/ely/issues"
   },
