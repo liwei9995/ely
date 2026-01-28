@@ -19,7 +19,7 @@
 
 ## 📦 安装
 
-项目通过 [JSR](https://jsr.io) (JavaScript Registry) 发布，支持通过 npm/pnpm 全局安装。
+项目通过 [NPM](https://www.npmjs.com/) 和 [JSR](https://jsr.io) (JavaScript Registry) 发布，支持通过 npm/pnpm/bun/deno 等全局安装。
 
 ```bash
 # 使用 pnpm（推荐）
@@ -280,11 +280,11 @@ Alex Li
 
 ## 🤝 贡献
 
-欢迎提交 Issue 和 Pull Request！
+欢迎提交 [Issue](https://github.com/liwei9995/ely/issues) 和 [Pull Request](https://github.com/liwei9995/ely#readme)！
 
 ## 📄 更新日志
 
-### v0.0.6
+### v0.0.7
 
 - ✨ 初始版本
 - 🍣 交互式命令选择

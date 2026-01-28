@@ -1,7 +1,7 @@
 {
   "name": "aily",
   "type": "module",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "license": "MIT",
   "author": "Alex Li",
   "description": "A tool that can quickly read and execute project commands.",
@@ -59,5 +59,9 @@
     "onlyBuiltDependencies": [
       "simple-git-hooks"
     ]
-  }
+  },
+  "bugs": {
+    "url": "https://github.com/liwei9995/ely/issues"
+  },
+  "homepage": "https://github.com/liwei9995/ely#readme"
 }

@@ -181,7 +181,6 @@ prompts.log.error('Error message')
 #### 发布步骤
 
 1. 更新版本号（遵循语义化版本）
-
    - 更新 `package.json` 中的 `version`
    - 更新 `jsr.json` 中的 `version`
    - 更新 `README.md` 中的更新日志
@@ -218,7 +217,7 @@ npx jsr publish
 ```json
 {
   "name": "@yiyi/ely",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "license": "MIT",
   "author": "Alex Li",
   "exports": "./src/index.ts", // 库的默认导出
